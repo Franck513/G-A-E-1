@@ -1,4 +1,4 @@
-flet==0.21.2
+flet==0.24.1
 fpdf2==2.8.2
 requests
 pypdf
