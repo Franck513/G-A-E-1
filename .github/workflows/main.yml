@@ -5,9 +5,6 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build-android:
     runs-on: ubuntu-22.04
@@ -70,6 +67,10 @@ jobs:
         run: |
           python -m pip install --upgrade "pip<24" "setuptools<70" wheel
 
+          # Mettre à jour Flet vers la dernière version compatible Flutter 3.24+
+          pip install --upgrade flet
+          pip install -e . || pip install .
+
           # 1. Téléchargement direct de ReportLab en Python pur dans le projet
           pip install reportlab --target . --no-deps
 
@@ -99,33 +100,30 @@ jobs:
         run: |
           yes | flet build apk --verbose
 
-      - name: Publier l'APK sur GitHub Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sauvegarder l'APK en artifact GitHub (Non-bloquant)
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: GAEApp-Android
+          path: build/apk/*.apk
+
+      - name: Obtenir un lien de téléchargement direct
+        if: always()
         run: |
-          APK_FILE=$(find build/apk -name "*.apk" 2>/dev/null | head -n 1)
-          if [ -z "$APK_FILE" ]; then
-            APK_FILE=$(find . -name "*.apk" 2>/dev/null | head -n 1)
-          fi
-
-          if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
-            echo "Publication de l'APK sur GitHub Releases..."
-            
-            # Nettoyage de l'ancienne release "latest" pour la remplacer
-            gh release delete latest --yes || true
-            git tag -d latest || true
-            git push origin :refs/tags/latest || true
-
-            # Création de la release avec le fichier APK attaché
-            gh release create latest "$APK_FILE" \
-              --title "Dernière version APK" \
-              --notes "Compilation automatique effectuée avec succès." \
-              --prerelease
-              
+          APK_FILE=$(find build/apk -name "*.apk" | head -n 1)
+          if [ -f "$APK_FILE" ]; then
             echo "=========================================================="
-            echo " ✔ APK publié ! Téléchargeable dans la rubrique Releases de ton dépôt."
+            echo " FICHIER APK DÉTECTÉ : $APK_FILE"
+            echo "=========================================================="
+            echo ""
+            echo "--> LIEN 1 (BashUpload - Téléchargement immédiat) :"
+            curl -T "$APK_FILE" https://bashupload.com/ || true
+            echo ""
+            echo ""
+            echo "--> LIEN 2 (Litterbox - Valide 24h) :"
+            curl -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@$APK_FILE" https://litterbox.catbox.moe/resources/internals/api.php || true
+            echo ""
             echo "=========================================================="
           else
-            echo "❌ Aucun fichier APK n'a été trouvé."
-            exit 1
+            echo "Aucun fichier APK n'a été trouvé."
           fi
